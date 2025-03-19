@@ -1,0 +1,63 @@
+import meshio
+import numpy as np
+import os
+from dataset import load_dataset
+
+# -----------------------------
+# Load Dataset
+# -----------------------------
+DATASET_PATH = "./deforming_plate"
+SPLIT = "valid"
+
+print(f"Loading dataset from {DATASET_PATH} ({SPLIT} split)...")
+data = load_dataset(DATASET_PATH, SPLIT)
+keys = data.output_classes.keys()
+print(f"Dataset loaded. Keys: {keys}")
+
+# -----------------------------
+# Process Dataset
+# -----------------------------
+processed_data = {k: [] for k in keys}
+
+print("Processing dataset...")
+for i, d in enumerate(data):
+    for key in keys:
+        processed_data[key].append(d[key].numpy())
+
+    if i % 10 == 0:
+        print(f"Processed {i} samples...")
+
+print("Processing complete.")
+
+# -----------------------------
+# Save ALL Timesteps Using "world_pos" for Deformation
+# -----------------------------
+output_dir = os.path.join(DATASET_PATH, "vtk_files")
+os.makedirs(output_dir, exist_ok=True)
+
+for n in range(len(processed_data["world_pos"])):  # Use world_pos instead
+    print(f"Processing instance {n + 1}/{len(processed_data['world_pos'])}...")
+
+    total_timesteps = processed_data["world_pos"][n].shape[0]
+    instance_dir = os.path.join(output_dir, f"instance_{n}")
+    os.makedirs(instance_dir, exist_ok=True)
+
+    for t_idx in range(total_timesteps):
+        points = np.array(processed_data["world_pos"][n])[t_idx]  # Use world positions per timestep
+        cells = np.array(processed_data["cells"][n])[0]
+        cells = [("tetra", cells)]  # Define tetrahedral connectivity
+
+        point_data = {
+            "stress": processed_data["stress"][n][t_idx, :, 0].astype(np.float32),
+            "node_type": processed_data["node_type"][n][t_idx, :, 0].astype(np.float32)
+        }
+
+        mesh = meshio.Mesh(points, cells, point_data=point_data)
+        vtk_filename = os.path.join(instance_dir, f"data_t{t_idx}.vtk")
+        mesh.write(vtk_filename)
+
+        if t_idx % 10 == 0:
+            print(f"  Saved timestep {t_idx}/{total_timesteps} for instance {n}")
+
+print(f"✅ All timesteps saved using world_pos in: {output_dir}")
+print("Ready for visualization in ParaView! 🎉")
